@@ -37,6 +37,3 @@ Translate it from {input_language} to {output_language}.
         return jsonify({'translated_text': translated_text})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-if __name__ == '__main__':
-    app.run(debug=True)
