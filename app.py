@@ -1,52 +1,71 @@
 from flask import Flask, render_template, request, jsonify, send_file
+from cryptography.fernet import Fernet
 import openai
 from gtts import gTTS
 from io import BytesIO
 import os
 import random
 import time
-from cryptography.fernet import Fernet
 
 app = Flask(__name__)
 
 # Load OpenAI API key from environment variable
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
-# Generate a new encryption key
-key = Fernet.generate_key()
-cipher = Fernet(key)
+# Generate a new encryption key for Fernet
+# You would normally store this in a secure location
+encryption_key = Fernet.generate_key()
+cipher_suite = Fernet(encryption_key)
 
-# Token storage (simple prototype, refresh every minute)
+# Store the token value (it will be updated every minute)
 current_token = None
 token_timestamp = None
 
+# Generate a new token every minute
 def generate_token():
     global current_token, token_timestamp
     current_token = random.randint(1, 100)
     token_timestamp = time.time()
 
+# Route to display the UI
 @app.route('/')
 def index():
-    if not current_token or time.time() - token_timestamp > 60:
-        generate_token()
+    generate_token()  # Generate the token at the start
     return render_template('index.html', token=current_token)
 
+# Endpoint to verify token
+@app.route('/verify_token', methods=['POST'])
+def verify_token():
+    data = request.get_json()
+    token = data.get('token')
+    
+    # Check if the token is correct and has not expired
+    if token == current_token and (time.time() - token_timestamp) < 60:
+        return jsonify({'message': 'Token verified'})
+    else:
+        return jsonify({'message': 'Invalid or expired token'}), 400
+
+# Endpoint for translation
 @app.route('/translate', methods=['POST'])
 def translate():
     data = request.get_json()
-    text = data.get('text')
+    encrypted_text = data.get('text')
+    
+    # Decrypt the text
+    try:
+        decrypted_text = cipher_suite.decrypt(encrypted_text.encode()).decode()
+    except Exception as e:
+        return jsonify({'error': f'Decryption failed: {str(e)}'}), 500
+
     input_language = data.get('input_language', 'en-US')
     output_language = data.get('output_language', 'en')
-    
-    # Encrypt the input text
-    encrypted_input = cipher.encrypt(text.encode()).decode()
 
-    # Correct potential mispronunciations or errors in the medical terms
+    # Step 1: Correct potential mispronunciations or errors in the medical terms
     correction_prompt = f"""
     You are a medical language expert AI that accurately understands medical terminology.
     The user may have mispronounced or mistyped some medical terms. Please help to interpret 
     and correct any potential errors in medical terms within the following input:
-    Text: {text}
+    Text: {decrypted_text}
     
     Ensure that the text is corrected in {input_language} language for optimal translation accuracy.
     """
@@ -61,7 +80,7 @@ def translate():
     except Exception as e:
         return jsonify({'error': f'Correction step failed: {str(e)}'}), 500
 
-    # Translate the corrected text
+    # Step 2: Translate the corrected text
     translation_prompt = f"""
     Translate the following text from {input_language} to {output_language} with a focus on medical terminology. Text: {corrected_text}
     """
@@ -76,7 +95,7 @@ def translate():
     except Exception as e:
         return jsonify({'error': f'Translation step failed: {str(e)}'}), 500
 
-    # Verify and adjust translation accuracy
+    # Step 3: Verify and adjust translation accuracy
     verification_prompt = f"""
     You are a medical language expert AI specializing in translation accuracy for medical terminology.
     Please review the translated text and make any necessary adjustments to ensure it accurately 
@@ -102,15 +121,15 @@ def translate():
     except Exception as e:
         return jsonify({'error': f'Verification step failed: {str(e)}'}), 500
 
-    # Encrypt the translated output
-    encrypted_output = cipher.encrypt(final_translated_text.encode()).decode()
+    # Encrypt the translated text
+    encrypted_translated_text = cipher_suite.encrypt(final_translated_text.encode()).decode()
 
     return jsonify({
         'corrected_text': corrected_text,
-        'encrypted_input': encrypted_input,
-        'encrypted_output': encrypted_output
+        'encrypted_translated_text': encrypted_translated_text
     })
 
+# Endpoint for text-to-speech conversion
 @app.route('/speak', methods=['POST'])
 def speak():
     data = request.get_json()
@@ -128,13 +147,3 @@ def speak():
         return send_file(audio_bytes, mimetype='audio/mpeg')
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-@app.route('/verify_token', methods=['POST'])
-def verify_token():
-    data = request.get_json()
-    token = data.get('token')
-
-    if not token.isdigit() or int(token) != current_token:
-        return jsonify({'error': 'Invalid token'}), 400  # Bad Request if token is invalid
-
-    return jsonify({'message': 'Token verified'}), 200
