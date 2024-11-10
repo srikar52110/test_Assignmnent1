@@ -38,6 +38,10 @@
 <body>
     <div class="container">
         <h1>Healthcare Translation Web App</h1>
+        <p><strong>Security Note:</strong> This token changes every minute for enhanced security.</p>
+        <h2>Current Token: {{ token }}</h2>
+        <label for="tokenInput">Enter Token to Proceed:</label>
+        <input type="text" id="tokenInput" required>
 
         <!-- Language selection -->
         <label for="inputLanguage">Input Language:</label>
@@ -54,19 +58,16 @@
             <option value="fr">French</option>
         </select>
 
-        <!-- Button to start speech recognition -->
         <button id="startRecognition">Start Speaking</button>
         <p id="status"></p>
 
-        <!-- Display the original and translated text -->
         <div id="original"></div>
         <div id="translated"></div>
-
-        <!-- Audio element to play the translated text -->
         <audio id="audio-player" controls style="display: none;"></audio>
     </div>
 
     <script>
+        const tokenInput = document.getElementById('tokenInput');
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         recognition.lang = 'en-US';
 
@@ -76,42 +77,23 @@
         const translatedTextElement = document.getElementById('translated');
         const audioPlayer = document.getElementById('audio-player');
 
-        // Speech recognition setup
-        recognition.onstart = () => { statusElement.textContent = 'Listening...'; };
-        recognition.onend = () => { statusElement.textContent = 'Stopped listening.'; };
-        recognition.onerror = (event) => { statusElement.textContent = 'Error: ' + event.error; };
-
         recognition.onresult = (event) => {
             const spokenText = event.results[0][0].transcript;
             originalTextElement.textContent = 'Original Text: ' + spokenText;
 
             const inputLanguage = document.getElementById('inputLanguage').value;
             const outputLanguage = document.getElementById('outputLanguage').value;
+            const token = tokenInput.value;
 
             fetch('/translate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: spokenText, input_language: inputLanguage, output_language: outputLanguage })
+                body: JSON.stringify({ text: spokenText, input_language: inputLanguage, output_language: outputLanguage, token: token })
             })
                 .then(response => response.json())
                 .then(data => {
                     if (data.translated_text) {
                         translatedTextElement.textContent = 'Translated Text: ' + data.translated_text;
-
-                        // Fetch and play translated text audio
-                        fetch('/speak', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ text: data.translated_text, language: outputLanguage })
-                        })
-                            .then(response => response.blob())
-                            .then(blob => {
-                                const url = URL.createObjectURL(blob);
-                                audioPlayer.src = url;
-                                audioPlayer.style.display = 'block';
-                                audioPlayer.play();
-                            })
-                            .catch(error => alert('Error in speech synthesis: ' + error));
                     }
                 })
                 .catch(error => alert('Error in translation: ' + error));
