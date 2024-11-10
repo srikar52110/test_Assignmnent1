@@ -9,25 +9,46 @@
         body {
             font-family: Arial, sans-serif;
             padding: 20px;
+            margin: 0;
+            background-color: #f4f4f4;
         }
 
         .container {
             max-width: 600px;
             margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
         }
 
-        #original, #translated {
-            margin: 10px 0;
+        h1 {
+            text-align: center;
+        }
+
+        label, select, input, button {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        label {
+            font-weight: bold;
+        }
+
+        select, input {
             padding: 10px;
-            border: 1px solid #ddd;
+            border-radius: 4px;
+            border: 1px solid #ccc;
         }
 
         button {
-            padding: 10px 20px;
+            padding: 12px;
             background-color: #007BFF;
             color: white;
             border: none;
+            border-radius: 4px;
             cursor: pointer;
+            transition: background-color 0.3s;
         }
 
         button:hover {
@@ -37,6 +58,28 @@
         #status {
             margin-top: 10px;
             font-weight: bold;
+            color: #ff4d4d;
+        }
+
+        #original, #translated {
+            margin: 20px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+
+        #tokenDisplay {
+            margin-bottom: 15px;
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        #audio-player {
+            display: block;
+            margin-top: 20px;
+            width: 100%;
         }
     </style>
 </head>
@@ -44,9 +87,9 @@
     <div class="container">
         <h1>Healthcare Translation Web App</h1>
 
-        <!-- Display the random token -->
+        <!-- Token display -->
         <div id="tokenDisplay">
-            <p>Token: <span id="token"></span></p>
+            <p>Token: <span id="token">{{ token }}</span></p>
             <p id="securityNotice">Security Notice: Token updates every minute. Please verify your token to proceed.</p>
         </div>
 
@@ -65,7 +108,7 @@
             <option value="fr">French</option>
         </select>
 
-        <!-- Token verification input -->
+        <!-- Token verification -->
         <label for="tokenInput">Enter Token to Proceed:</label>
         <input type="text" id="tokenInput" placeholder="Enter the token displayed" />
         <button id="verifyTokenButton">Verify Token</button>
@@ -78,7 +121,7 @@
         <div id="original"></div>
         <div id="translated"></div>
 
-        <!-- Audio element to play the translated text -->
+        <!-- Audio player -->
         <audio id="audio-player" controls style="display: none;"></audio>
     </div>
 
@@ -88,23 +131,18 @@
 
         const startRecognitionButton = document.getElementById('startRecognition');
         const statusElement = document.getElementById('status');
+        const tokenInput = document.getElementById('tokenInput');
+        const verifyTokenButton = document.getElementById('verifyTokenButton');
+        const tokenDisplay = document.getElementById('tokenDisplay');
         const originalTextElement = document.getElementById('original');
         const translatedTextElement = document.getElementById('translated');
         const audioPlayer = document.getElementById('audio-player');
-        const tokenInput = document.getElementById('tokenInput');
-        const verifyTokenButton = document.getElementById('verifyTokenButton');
-        const tokenDisplay = document.getElementById('token');
 
         let tokenVerified = false;
 
-        // Speech recognition setup
-        recognition.onstart = () => { statusElement.textContent = 'Listening...'; };
-        recognition.onend = () => { statusElement.textContent = 'Stopped listening.'; };
-        recognition.onerror = (event) => { statusElement.textContent = 'Error: ' + event.error; };
-
         recognition.onresult = (event) => {
-            const spokenText = event.results[0][0].transcript;
-            originalTextElement.textContent = 'Original Text: ' + spokenText;
+            const text = event.results[0][0].transcript;
+            originalTextElement.textContent = 'Original Text: ' + text;
 
             const inputLanguage = document.getElementById('inputLanguage').value;
             const outputLanguage = document.getElementById('outputLanguage').value;
@@ -112,7 +150,7 @@
             fetch('/translate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: spokenText, input_language: inputLanguage, output_language: outputLanguage })
+                body: JSON.stringify({ text, input_language: inputLanguage, output_language: outputLanguage })
             })
             .then(response => response.json())
             .then(data => {
