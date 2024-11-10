@@ -5,10 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Healthcare Translation Web App</title>
     <style>
+        /* Simple styling for mobile-first design */
         body {
             font-family: Arial, sans-serif;
             padding: 20px;
         }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        #original, #translated {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+        }
+
         button {
             padding: 10px 20px;
             background-color: #007BFF;
@@ -16,64 +29,57 @@
             border: none;
             cursor: pointer;
         }
-        button:hover {
-            background-color: #0056b3;
-        }
-        #original, #translated {
-            margin: 10px 0;
-            padding: 10px;
-            border: 1px solid #ddd;
-        }
+
+            button:hover {
+                background-color: #0056b3;
+            }
     </style>
 </head>
 <body>
-    <h1>Healthcare Translation Web App</h1>
+    <div class="container">
+        <h1>Healthcare Translation Web App</h1>
 
-    <!-- Language selection -->
-    <label for="inputLanguage">Input Language:</label>
-    <select id="inputLanguage">
-        <option value="en-US">English</option>
-        <option value="es-ES">Spanish</option>
-        <option value="fr-FR">French</option>
-    </select>
+        <!-- Language selection -->
+        <label for="inputLanguage">Input Language:</label>
+        <select id="inputLanguage">
+            <option value="en-US">English</option>
+            <option value="es-ES">Spanish</option>
+            <option value="fr-FR">French</option>
+        </select>
 
-    <label for="outputLanguage">Output Language:</label>
-    <select id="outputLanguage">
-        <option value="en">English</option>
-        <option value="es">Spanish</option>
-        <option value="fr">French</option>
-    </select>
+        <label for="outputLanguage">Output Language:</label>
+        <select id="outputLanguage">
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+        </select>
 
-    <br><br>
+        <!-- Button to start speech recognition -->
+        <button id="startRecognition">Start Speaking</button>
+        <p id="status"></p>
 
-    <!-- Button to start speech recognition -->
-    <button id="startRecognition">Start Speaking</button>
-    <p id="status"></p>
+        <!-- Display the original and translated text -->
+        <div id="original"></div>
+        <div id="translated"></div>
 
-    <!-- Display the original and translated text -->
-    <div id="original"></div>
-    <div id="translated"></div>
+        <!-- Audio element to play the translated text -->
+        <audio id="audio-player" controls style="display: none;"></audio>
+    </div>
 
     <script>
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.lang = 'en-US'; // Default language
+        recognition.lang = 'en-US';
 
         const startRecognitionButton = document.getElementById('startRecognition');
         const statusElement = document.getElementById('status');
         const originalTextElement = document.getElementById('original');
         const translatedTextElement = document.getElementById('translated');
+        const audioPlayer = document.getElementById('audio-player');
 
-        recognition.onstart = () => {
-            statusElement.textContent = 'Listening...';
-        };
-
-        recognition.onend = () => {
-            statusElement.textContent = 'Stopped listening.';
-        };
-
-        recognition.onerror = (event) => {
-            statusElement.textContent = 'Error occurred: ' + event.error;
-        };
+        // Speech recognition setup
+        recognition.onstart = () => { statusElement.textContent = 'Listening...'; };
+        recognition.onend = () => { statusElement.textContent = 'Stopped listening.'; };
+        recognition.onerror = (event) => { statusElement.textContent = 'Error: ' + event.error; };
 
         recognition.onresult = (event) => {
             const spokenText = event.results[0][0].transcript;
@@ -82,32 +88,36 @@
             const inputLanguage = document.getElementById('inputLanguage').value;
             const outputLanguage = document.getElementById('outputLanguage').value;
 
-            // Send the spoken text to Flask for translation
             fetch('/translate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text: spokenText,
-                    input_language: inputLanguage,
-                    output_language: outputLanguage
+                body: JSON.stringify({ text: spokenText, input_language: inputLanguage, output_language: outputLanguage })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.translated_text) {
+                        translatedTextElement.textContent = 'Translated Text: ' + data.translated_text;
+
+                        // Fetch and play translated text audio
+                        fetch('/speak', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ text: data.translated_text, language: outputLanguage })
+                        })
+                            .then(response => response.blob())
+                            .then(blob => {
+                                const url = URL.createObjectURL(blob);
+                                audioPlayer.src = url;
+                                audioPlayer.style.display = 'block';
+                                audioPlayer.play();
+                            })
+                            .catch(error => alert('Error in speech synthesis: ' + error));
+                    }
                 })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.translated_text) {
-                    translatedTextElement.textContent = 'Translated Text: ' + data.translated_text;
-                    // Read out the translated text
-                    const utterance = new SpeechSynthesisUtterance(data.translated_text);
-                    utterance.lang = outputLanguage;
-                    window.speechSynthesis.speak(utterance);
-                }
-            })
-            .catch(error => alert('Error in translation: ' + error));
+                .catch(error => alert('Error in translation: ' + error));
         };
 
-        startRecognitionButton.onclick = () => {
-            recognition.start();
-        };
+        startRecognitionButton.onclick = () => { recognition.start(); };
     </script>
 </body>
 </html>
