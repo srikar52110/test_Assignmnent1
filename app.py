@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, session
 import openai
 from gtts import gTTS
 from io import BytesIO
@@ -8,6 +8,9 @@ from datetime import datetime
 
 app = Flask(__name__)
 
+# Secret key for session management (for token storage)
+app.secret_key = os.urandom(24)
+
 # Load OpenAI API key from environment variable
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
@@ -15,24 +18,26 @@ openai.api_key = os.getenv('OPENAI_API_KEY')
 def generate_token():
     return random.randint(1, 100)
 
-# Global variable to store the current token
-current_token = generate_token()
-
 @app.route('/')
 def index():
-    global current_token
-    # Update token every minute
-    current_token = generate_token()
-    return render_template('index.html', token=current_token)
+    # Generate a new token for the session
+    session['current_token'] = generate_token()
+    return render_template('index.html', token=session['current_token'])
 
 @app.route('/verify-token', methods=['POST'])
 def verify_token():
-    global current_token
+    # Retrieve the token from session
+    current_token = session.get('current_token')
+
+    if not current_token:
+        return jsonify({'error': 'No token found. Please refresh the page.'}), 400
+
+    # Get the token entered by the user
     data = request.get_json()
     user_token = data.get('token')
 
-    # Check if token matches the current one
-    if user_token != current_token:
+    # Check if the entered token matches the session token
+    if user_token != str(current_token):
         return jsonify({'error': 'Invalid token. Please check the token and try again.'}), 403
 
     return jsonify({'message': 'Token verified successfully'})
@@ -44,11 +49,7 @@ def translate():
     input_language = data.get('input_language', 'en-US')
     output_language = data.get('output_language', 'en')
 
-    # Step 1: Confidentiality check for prototype
-    confidentiality_notice = "Sensitive data processing is restricted to internal operations for confidentiality."
-    print(confidentiality_notice)  # Logging for demonstration purposes
-
-    # Step 2: Correct potential mispronunciations or errors in the medical terms
+    # Step 1: Correct potential mispronunciations or errors in the medical terms
     correction_prompt = f"""
     You are a medical language expert AI that accurately understands medical terminology.
     The user may have mispronounced or mistyped some medical terms. Please help to interpret 
@@ -68,7 +69,7 @@ def translate():
     except Exception as e:
         return jsonify({'error': f'Correction step failed: {str(e)}'}), 500
 
-    # Step 3: Translate the corrected text
+    # Step 2: Translate the corrected text
     translation_prompt = f"""
     Translate the following text from {input_language} to {output_language} with a focus on medical terminology. Text: {corrected_text}
     """
@@ -83,7 +84,7 @@ def translate():
     except Exception as e:
         return jsonify({'error': f'Translation step failed: {str(e)}'}), 500
 
-    # Step 4: Verify and adjust translation accuracy
+    # Step 3: Verify and adjust translation accuracy
     verification_prompt = f"""
     You are a medical language expert AI specializing in translation accuracy for medical terminology.
     Please review the translated text and make any necessary adjustments to ensure it accurately 
