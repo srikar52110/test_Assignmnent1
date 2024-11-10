@@ -17,11 +17,11 @@ openai.api_key = os.getenv('OPENAI_API_KEY')
 encryption_key = Fernet.generate_key()
 cipher_suite = Fernet(encryption_key)
 
-# Store the token value (it will be updated every minute)
+# Store the token value (it will be updated every 2 minutes)
 current_token = None
 token_timestamp = None
 
-# Generate a new token every minute
+# Generate a new token every 2 minutes
 def generate_token():
     global current_token, token_timestamp
     current_token = random.randint(1, 100)
@@ -29,7 +29,7 @@ def generate_token():
 
 @app.route('/')
 def index():
-    generate_token()  # Generate the token at the start
+    generate_token()  # Generate a new token at the start
     return render_template('index.html', token=current_token)
 
 # Endpoint to verify token
@@ -38,8 +38,8 @@ def verify_token():
     data = request.get_json()
     token = data.get('token')
     
-    # Check if the token is correct and has not expired
-    if token == current_token and (time.time() - token_timestamp) < 60:
+    # Check if the token is correct and has not expired (2 minutes window)
+    if token == current_token and (time.time() - token_timestamp) < 120:
         return jsonify({'message': 'Token verified'})
     else:
         return jsonify({'message': 'Invalid or expired token'}), 400
