@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Healthcare Translation Web App</title>
     <style>
+        /* Simple styling for mobile-first design */
         body {
             font-family: Arial, sans-serif;
             padding: 20px;
@@ -38,7 +39,7 @@
     <div class="container">
         <h1>Healthcare Translation Web App</h1>
 
-        <!-- Token and note about token expiration -->
+        <!-- Display Token -->
         <p>Current Token: <span id="token">{{ token }}</span> (This token updates every two minutes)</p>
 
         <!-- Token input and verification -->
@@ -127,28 +128,21 @@
             const inputLanguage = document.getElementById('inputLanguage').value;
             const outputLanguage = document.getElementById('outputLanguage').value;
 
-            // Encrypt the spoken text before sending it to the server
-            const encryptedText = btoa(spokenText); // Simple base64 encryption
-
             fetch('/translate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: encryptedText, input_language: inputLanguage, output_language: outputLanguage })
+                body: JSON.stringify({ text: spokenText, input_language: inputLanguage, output_language: outputLanguage })
             })
             .then(response => response.json())
             .then(data => {
-                if (data.encrypted_translated_text) {
-                    translatedTextElement.textContent = 'Translated Text: (Encrypted)';
-                    
-                    // Decrypt the translated text and display
-                    const decryptedText = atob(data.encrypted_translated_text); // Simple base64 decryption
-                    translatedTextElement.textContent = 'Translated Text: ' + decryptedText;
+                if (data.translated_text) {
+                    translatedTextElement.textContent = 'Translated Text: ' + data.translated_text;
 
                     // Fetch and play translated text audio
                     fetch('/speak', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ text: decryptedText, language: outputLanguage })
+                        body: JSON.stringify({ text: data.translated_text, language: outputLanguage })
                     })
                     .then(response => response.blob())
                     .then(blob => {
