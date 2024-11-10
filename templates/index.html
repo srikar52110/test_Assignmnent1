@@ -109,20 +109,21 @@
         </select>
 
         <!-- Token verification -->
-        <label for="tokenInput">Enter Token to Proceed:</label>
-        <input type="text" id="tokenInput" placeholder="Enter the token displayed" />
+        <label for="tokenInput">Enter Token:</label>
+        <input type="text" id="tokenInput" placeholder="Enter your token">
         <button id="verifyTokenButton">Verify Token</button>
 
-        <!-- Button to start speech recognition -->
-        <button id="startRecognition" disabled>Start Speaking</button>
         <p id="status"></p>
 
-        <!-- Display the original and translated text -->
+        <!-- Speech recognition button -->
+        <button id="startRecognition" disabled>Start Speech Recognition</button>
+
+        <!-- Text display -->
         <div id="original"></div>
         <div id="translated"></div>
 
         <!-- Audio player -->
-        <audio id="audio-player" controls style="display: none;"></audio>
+        <audio id="audio-player" controls style="display:none;"></audio>
     </div>
 
     <script>
