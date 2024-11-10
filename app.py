@@ -43,7 +43,7 @@ def verify_token():
         return jsonify({'message': 'Token verified'})
     else:
         return jsonify({'message': 'Invalid or expired token'}), 400
-
+        
 # Endpoint for translation
 @app.route('/translate', methods=['POST'])
 def translate():
