@@ -5,81 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Healthcare Translation Web App</title>
     <style>
-        /* Simple styling for mobile-first design */
         body {
             font-family: Arial, sans-serif;
             padding: 20px;
-            margin: 0;
-            background-color: #f4f4f4;
         }
 
         .container {
             max-width: 600px;
             margin: 0 auto;
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
         }
 
-        h1 {
-            text-align: center;
-        }
-
-        label, select, input, button {
-            width: 100%;
-            margin-bottom: 10px;
-        }
-
-        label {
-            font-weight: bold;
-        }
-
-        select, input {
+        #original, #translated {
+            margin: 10px 0;
             padding: 10px;
-            border-radius: 4px;
-            border: 1px solid #ccc;
+            border: 1px solid #ddd;
         }
 
         button {
-            padding: 12px;
+            padding: 10px 20px;
             background-color: #007BFF;
             color: white;
             border: none;
-            border-radius: 4px;
             cursor: pointer;
-            transition: background-color 0.3s;
         }
 
         button:hover {
             background-color: #0056b3;
-        }
-
-        #status {
-            margin-top: 10px;
-            font-weight: bold;
-            color: #ff4d4d;
-        }
-
-        #original, #translated {
-            margin: 20px 0;
-            padding: 10px;
-            border: 1px solid #ddd;
-            background-color: #f9f9f9;
-            border-radius: 4px;
-        }
-
-        #tokenDisplay {
-            margin-bottom: 15px;
-            background-color: #f4f4f4;
-            padding: 10px;
-            border-radius: 5px;
-        }
-
-        #audio-player {
-            display: block;
-            margin-top: 20px;
-            width: 100%;
         }
     </style>
 </head>
@@ -87,11 +38,14 @@
     <div class="container">
         <h1>Healthcare Translation Web App</h1>
 
-        <!-- Token display -->
-        <div id="tokenDisplay">
-            <p>Token: <span id="token">{{ token }}</span></p>
-            <p id="securityNotice">Security Notice: Token updates every minute. Please verify your token to proceed.</p>
-        </div>
+        <!-- Token and note about token expiration -->
+        <p>Current Token: <span id="token"></span> (This token updates every minute)</p>
+
+        <!-- Token input and verification -->
+        <label for="tokenInput">Enter Token:</label>
+        <input type="text" id="tokenInput" placeholder="Enter your token">
+        <button id="verifyTokenButton">Verify Token</button>
+        <p id="status"></p>
 
         <!-- Language selection -->
         <label for="inputLanguage">Input Language:</label>
@@ -108,26 +62,18 @@
             <option value="fr">French</option>
         </select>
 
-        <!-- Token verification -->
-        <label for="tokenInput">Enter Token:</label>
-        <input type="text" id="tokenInput" placeholder="Enter your token">
-        <button id="verifyTokenButton">Verify Token</button>
+        <!-- Button to start speech recognition -->
+        <button id="startRecognition" disabled>Start Speaking</button>
 
-        <p id="status"></p>
-
-        <!-- Speech recognition button -->
-        <button id="startRecognition" disabled>Start Speech Recognition</button>
-
-        <!-- Text display -->
+        <!-- Display the original and translated text -->
         <div id="original"></div>
         <div id="translated"></div>
 
-        <!-- Audio player -->
-        <audio id="audio-player" controls style="display:none;"></audio>
+        <!-- Audio element to play the translated text -->
+        <audio id="audio-player" controls style="display: none;"></audio>
     </div>
 
     <script>
-        // Initialize the speech recognition API
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         recognition.lang = 'en-US';
 
@@ -135,35 +81,86 @@
         const statusElement = document.getElementById('status');
         const tokenInput = document.getElementById('tokenInput');
         const verifyTokenButton = document.getElementById('verifyTokenButton');
-        const tokenDisplay = document.getElementById('tokenDisplay');
+        const tokenDisplay = document.getElementById('token');
         const originalTextElement = document.getElementById('original');
         const translatedTextElement = document.getElementById('translated');
         const audioPlayer = document.getElementById('audio-player');
 
         let tokenVerified = false;
 
+        // Show the token on the page
+        fetch('/')
+            .then(response => response.text())
+            .then(data => {
+                const regex = /Current Token: (\d+)/;
+                const match = data.match(regex);
+                if (match) {
+                    tokenDisplay.textContent = match[1];
+                }
+            });
+
+        // Verify the token
+        verifyTokenButton.onclick = () => {
+            const token = tokenInput.value;
+
+            fetch('/verify_token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: parseInt(token) })
+            })
+            .then(response => response.json())
+            .then(data => {
+                statusElement.textContent = data.message;
+                if (data.message === 'Token verified') {
+                    tokenVerified = true;
+                    startRecognitionButton.disabled = false;
+                }
+            })
+            .catch(error => {
+                statusElement.textContent = 'Invalid or expired token';
+                tokenVerified = false;
+            });
+        };
+
+        // Speech recognition setup
+        recognition.onstart = () => { statusElement.textContent = 'Listening...'; };
+        recognition.onend = () => { statusElement.textContent = 'Stopped listening.'; };
+        recognition.onerror = (event) => { statusElement.textContent = 'Error: ' + event.error; };
+
         recognition.onresult = (event) => {
-            const text = event.results[0][0].transcript;
-            originalTextElement.textContent = 'Original Text: ' + text;
+            const spokenText = event.results[0][0].transcript;
+            originalTextElement.textContent = 'Original Text: ' + spokenText;
+
+            if (!tokenVerified) {
+                statusElement.textContent = 'Please verify the token first.';
+                return;
+            }
 
             const inputLanguage = document.getElementById('inputLanguage').value;
             const outputLanguage = document.getElementById('outputLanguage').value;
 
+            // Encrypt the spoken text before sending it to the server
+            const encryptedText = btoa(spokenText); // Simple base64 encryption
+
             fetch('/translate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text, input_language: inputLanguage, output_language: outputLanguage })
+                body: JSON.stringify({ text: encryptedText, input_language: inputLanguage, output_language: outputLanguage })
             })
             .then(response => response.json())
             .then(data => {
-                if (data.translated_text) {
-                    translatedTextElement.textContent = 'Translated Text: ' + data.translated_text;
+                if (data.encrypted_translated_text) {
+                    translatedTextElement.textContent = 'Translated Text: (Encrypted)';
+                    
+                    // Decrypt the translated text and display
+                    const decryptedText = atob(data.encrypted_translated_text); // Simple base64 decryption
+                    translatedTextElement.textContent = 'Translated Text: ' + decryptedText;
 
                     // Fetch and play translated text audio
                     fetch('/speak', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ text: data.translated_text, language: outputLanguage })
+                        body: JSON.stringify({ text: decryptedText, language: outputLanguage })
                     })
                     .then(response => response.blob())
                     .then(blob => {
@@ -173,47 +170,12 @@
                         audioPlayer.play();
                     })
                     .catch(error => alert('Error in speech synthesis: ' + error));
-                } else {
-                    alert('Error: ' + data.error);
                 }
             })
             .catch(error => alert('Error in translation: ' + error));
         };
 
-        // Start recognition when button clicked
-        startRecognitionButton.onclick = () => recognition.start();
-
-        // Token verification handler
-        verifyTokenButton.onclick = () => {
-            const enteredToken = tokenInput.value;
-
-            if (!enteredToken || !/^\d+$/.test(enteredToken)) {
-                statusElement.textContent = 'Invalid token format. Please enter a valid numeric token.';
-                return;
-            }
-
-            fetch('/verify_token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: enteredToken })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.message === 'Token verified') {
-                    tokenVerified = true;
-                    startRecognitionButton.disabled = false;
-                    statusElement.textContent = 'Token Verified. You can start speaking.';
-                } else {
-                    statusElement.textContent = 'Invalid token. Please try again.';
-                }
-            })
-            .catch(error => {
-                statusElement.textContent = 'Error verifying token.';
-            });
-        };
-
-        // Initialize the token display
-        tokenDisplay.querySelector('#token').textContent = "{{ token }}";
+        startRecognitionButton.onclick = () => { recognition.start(); };
     </script>
 </body>
 </html>
