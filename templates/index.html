@@ -32,6 +32,10 @@
         button:hover {
             background-color: #0056b3;
         }
+
+        input, select {
+            margin: 10px 0;
+        }
     </style>
 </head>
 <body>
@@ -105,6 +109,10 @@
 
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         recognition.lang = 'en-US';
+
+        recognition.onstart = () => { statusElement.textContent = 'Listening...'; };
+        recognition.onend = () => { statusElement.textContent = 'Stopped listening.'; };
+        recognition.onerror = (event) => { statusElement.textContent = 'Error: ' + event.error; };
 
         recognition.onresult = (event) => {
             const spokenText = event.results[0][0].transcript;
