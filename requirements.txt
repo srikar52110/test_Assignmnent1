@@ -3,3 +3,4 @@ gTTS==2.5.3
 numpy==1.26.4
 openai==0.28.0
 python-dotenv==1.0.1
+cryptography==39.0.1
