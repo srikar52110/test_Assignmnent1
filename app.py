@@ -1,16 +1,17 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 import openai
+from gtts import gTTS
+from io import BytesIO
 import os
 
-# Initialize Flask app
 app = Flask(__name__)
 
-# Set OpenAI API key
+# Load OpenAI API key from environment variable
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
 @app.route('/')
 def index():
-    return render_template('index.html')  # This renders index.html from templates/
+    return render_template('index.html')
 
 @app.route('/translate', methods=['POST'])
 def translate():
@@ -21,19 +22,34 @@ def translate():
 
     # Use OpenAI to translate the text
     prompt = f"""
-You are a helpful AI that translates text with medical accuracy. Text: {text}
-Translate it from {input_language} to {output_language}.
+Translate the following text from {input_language} to {output_language} with a focus on medical terminology. Text: {text}
 """
-    
     try:
-        # Call OpenAI API to perform translation
         response = openai.Completion.create(
             model="gpt-3.5-turbo-instruct",
             prompt=prompt,
-            max_tokens=500,
+            max_tokens=1000,
             temperature=0.7
         )
         translated_text = response.choices[0].text.strip()
         return jsonify({'translated_text': translated_text})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/speak', methods=['POST'])
+def speak():
+    data = request.get_json()
+    text = data.get('text')
+    language = data.get('language', 'en')
+
+    try:
+        # Generate speech from the text in memory
+        tts = gTTS(text=text, lang=language, slow=False)
+        audio_bytes = BytesIO()
+        tts.write_to_fp(audio_bytes)
+        audio_bytes.seek(0)
+
+        # Return audio stream directly without saving
+        return send_file(audio_bytes, mimetype='audio/mpeg')
     except Exception as e:
         return jsonify({'error': str(e)}), 500
