@@ -1,95 +1,129 @@
-from flask import Flask, render_template, request, jsonify, session
-from cryptography.fernet import Fernet
+from flask import Flask, render_template, request, jsonify, send_file
 import openai
 from gtts import gTTS
 from io import BytesIO
 import os
-import random
-import time
+from cryptography.fernet import Fernet
 
 app = Flask(__name__)
-
-# Set up the Flask secret key (this is important for session management)
-app.secret_key = os.urandom(24)
 
 # Load OpenAI API key from environment variable
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
-# Initialize encryption key
-encryption_key = Fernet.generate_key()
-cipher_suite = Fernet(encryption_key)
+# Generate a secret key for encryption/decryption (For demonstration purposes)
+secret_key = Fernet.generate_key()
+cipher_suite = Fernet(secret_key)
 
-# For the token number (for simplicity, we store it globally for this example)
-token_number = None
-token_timestamp = None
+# Store the current token (this can be set to any value, here it's for illustration purposes)
+current_token = 42  # Example token, can be generated dynamically
 
 @app.route('/')
 def index():
-    global token_number, token_timestamp
-    current_time = time.time()
+    # Display the token to the user
+    return render_template('index.html', token=current_token)
 
-    # Generate a new token every minute
-    if not token_timestamp or current_time - token_timestamp >= 60:
-        token_number = random.randint(1, 100)
-        token_timestamp = current_time
-
-    return render_template('index.html', token_number=token_number)
-
-@app.route('/enter_token', methods=['POST'])
-def enter_token():
+@app.route('/verify-token', methods=['POST'])
+def verify_token():
     data = request.get_json()
-    token_entered = data.get('token')
+    token = data.get('token', '')
 
-    if token_entered == str(token_number):
-        session['token_verified'] = True
-        return jsonify({'success': 'Token verified! You can now proceed.'})
+    # Verify if the token entered by the user matches the one we generated
+    if int(token) == current_token:
+        return jsonify({"message": "Token verified successfully"})
     else:
-        session['token_verified'] = False
-        return jsonify({'error': 'Wrong token. Please try again.'}), 400
+        return jsonify({"error": "Invalid token"})
 
 @app.route('/translate', methods=['POST'])
 def translate():
-    # Ensure that token verification is successful
-    if not session.get('token_verified'):
-        return jsonify({'error': 'Please verify token to proceed.'}), 403
-
     data = request.get_json()
     text = data.get('text')
     input_language = data.get('input_language', 'en-US')
     output_language = data.get('output_language', 'en')
 
-    # Encrypt sensitive input data (for confidentiality)
-    encrypted_text = cipher_suite.encrypt(text.encode())
+    # Encrypt the text before sending to OpenAI for translation
+    encrypted_text = cipher_suite.encrypt(text.encode()).decode()
 
+    # Display a message showing that the text is being encrypted
+    encryption_message = "Your message is being encrypted for confidentiality."
+
+    # Step 1: Correct potential mispronunciations or errors in the medical terms
+    correction_prompt = f"""
+    You are a medical language expert AI that accurately understands medical terminology.
+    The user may have mispronounced or mistyped some medical terms. Please help to interpret 
+    and correct any potential errors in medical terms within the following input:
+    Text: {encrypted_text}
+    
+    Ensure that the text is corrected in {input_language} language for optimal translation accuracy.
+    """
     try:
-        # Decrypt the data for processing
-        decrypted_text = cipher_suite.decrypt(encrypted_text).decode()
-
-        # Use OpenAI to translate the text (simplified)
-        prompt = f"""
-        Translate the following text from {input_language} to {output_language} with a focus on medical terminology. Text: {decrypted_text}
-        """
-        response = openai.Completion.create(
+        correction_response = openai.Completion.create(
             model="gpt-3.5-turbo-instruct",
-            prompt=prompt,
+            prompt=correction_prompt,
             max_tokens=1000,
             temperature=0.7
         )
-        translated_text = response.choices[0].text.strip()
-
-        # Encrypt the translated text before sending back (for confidentiality)
-        encrypted_translated_text = cipher_suite.encrypt(translated_text.encode())
+        corrected_text = correction_response.choices[0].text.strip()
         
-        return jsonify({'translated_text': encrypted_translated_text.decode()})
+        # Decrypt the corrected text after processing
+        decrypted_corrected_text = cipher_suite.decrypt(corrected_text.encode()).decode()
     except Exception as e:
-        return jsonify({'error': f'Translation failed: {str(e)}'}), 500
+        return jsonify({'error': f'Correction step failed: {str(e)}'}), 500
+
+    # Step 2: Translate the corrected text
+    translation_prompt = f"""
+    Translate the following text from {input_language} to {output_language} with a focus on medical terminology. Text: {decrypted_corrected_text}
+    """
+    try:
+        translation_response = openai.Completion.create(
+            model="gpt-3.5-turbo-instruct",
+            prompt=translation_prompt,
+            max_tokens=1000,
+            temperature=0.7
+        )
+        translated_text = translation_response.choices[0].text.strip()
+
+        # Decrypt the translated text after translation
+        decrypted_translated_text = cipher_suite.decrypt(translated_text.encode()).decode()
+    except Exception as e:
+        return jsonify({'error': f'Translation step failed: {str(e)}'}), 500
+
+    # Step 3: Verify and adjust translation accuracy
+    verification_prompt = f"""
+    You are a medical language expert AI specializing in translation accuracy for medical terminology.
+    Please review the translated text and make any necessary adjustments to ensure it accurately 
+    reflects the original meaning, particularly for complex or sensitive medical terms. If the 
+    translation does not fully convey the intent or specific medical terms of the input, modify it 
+    accordingly.
+
+    Original Text: {decrypted_corrected_text}
+    Initial Translated Text: {decrypted_translated_text}
+    Input Language: {input_language}
+    Output Language: {output_language}
+
+    Provide the finalized translation that most accurately preserves the meaning and context.
+    """
+    try:
+        verification_response = openai.Completion.create(
+            model="gpt-3.5-turbo-instruct",
+            prompt=verification_prompt,
+            max_tokens=1000,
+            temperature=0.7
+        )
+        final_translated_text = verification_response.choices[0].text.strip()
+
+        # Decrypt the final translated text
+        final_translated_text_decrypted = cipher_suite.decrypt(final_translated_text.encode()).decode()
+    except Exception as e:
+        return jsonify({'error': f'Verification step failed: {str(e)}'}), 500
+
+    return jsonify({
+        'encryption_message': encryption_message,
+        'corrected_text': decrypted_corrected_text,
+        'translated_text': final_translated_text_decrypted
+    })
 
 @app.route('/speak', methods=['POST'])
 def speak():
-    # Ensure that token verification is successful
-    if not session.get('token_verified'):
-        return jsonify({'error': 'Please verify token to proceed.'}), 403
-
     data = request.get_json()
     text = data.get('text')
     language = data.get('language', 'en')
