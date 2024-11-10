@@ -1,71 +1,76 @@
 from flask import Flask, render_template, request, jsonify, send_file
-from cryptography.fernet import Fernet
 import openai
 from gtts import gTTS
 from io import BytesIO
 import os
 import random
 import time
+from cryptography.fernet import Fernet
 
 app = Flask(__name__)
 
 # Load OpenAI API key from environment variable
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
-# Generate a new encryption key for Fernet
-# You would normally store this in a secure location
+# Generate a random key for encryption/decryption
 encryption_key = Fernet.generate_key()
-cipher_suite = Fernet(encryption_key)
+cipher = Fernet(encryption_key)
 
-# Store the token value (it will be updated every 2 minutes)
-current_token = None
-token_timestamp = None
+# Store token
+current_token = random.randint(1, 100)
+last_token_time = time.time()
 
-# Generate a new token every 2 minutes
-def generate_token():
-    global current_token, token_timestamp
-    current_token = random.randint(1, 100)
-    token_timestamp = time.time()
+def update_token():
+    global current_token, last_token_time
+    current_time = time.time()
+    # Update token every 2 minutes
+    if current_time - last_token_time > 120:
+        current_token = random.randint(1, 100)
+        last_token_time = current_time
 
+# Route for homepage
 @app.route('/')
 def index():
-    generate_token()  # Generate a new token at the start
+    # Update token
+    update_token()
     return render_template('index.html', token=current_token)
 
-# Endpoint to verify token
-@app.route('/verify_token', methods=['POST'])
+# Route to verify token
+@app.route('/verify-token', methods=['POST'])
 def verify_token():
     data = request.get_json()
     token = data.get('token')
-    
-    # Check if the token is correct and has not expired (2 minutes window)
-    if token == current_token and (time.time() - token_timestamp) < 120:
-        return jsonify({'message': 'Token verified'})
+
+    # Check if token matches the current token
+    if token == current_token:
+        return jsonify({'message': 'Token verified successfully'})
     else:
-        return jsonify({'message': 'Invalid or expired token'}), 400
-        
-# Endpoint for translation
+        return jsonify({'error': 'Invalid token'}), 403
+
+# Encrypt the text
+def encrypt_text(text):
+    return cipher.encrypt(text.encode()).decode()
+
+# Decrypt the text
+def decrypt_text(encrypted_text):
+    return cipher.decrypt(encrypted_text.encode()).decode()
+
 @app.route('/translate', methods=['POST'])
 def translate():
     data = request.get_json()
-    encrypted_text = data.get('text')
-    
-    # Decrypt the text
-    try:
-        decrypted_text = cipher_suite.decrypt(encrypted_text.encode()).decode()
-    except Exception as e:
-        return jsonify({'error': f'Decryption failed: {str(e)}'}), 500
-
+    text = data.get('text')
     input_language = data.get('input_language', 'en-US')
     output_language = data.get('output_language', 'en')
+
+    # Encrypt the input text for confidentiality
+    encrypted_input_text = encrypt_text(text)
 
     # Step 1: Correct potential mispronunciations or errors in the medical terms
     correction_prompt = f"""
     You are a medical language expert AI that accurately understands medical terminology.
     The user may have mispronounced or mistyped some medical terms. Please help to interpret 
     and correct any potential errors in medical terms within the following input:
-    Text: {decrypted_text}
-    
+    Text: {encrypted_input_text}
     Ensure that the text is corrected in {input_language} language for optimal translation accuracy.
     """
     try:
@@ -121,14 +126,13 @@ def translate():
         return jsonify({'error': f'Verification step failed: {str(e)}'}), 500
 
     # Encrypt the translated text
-    encrypted_translated_text = cipher_suite.encrypt(final_translated_text.encode()).decode()
+    encrypted_translated_text = encrypt_text(final_translated_text)
 
     return jsonify({
-        'corrected_text': corrected_text,
-        'encrypted_translated_text': encrypted_translated_text
+        'corrected_text': decrypted_text,
+        'translated_text': encrypted_translated_text
     })
 
-# Endpoint for text-to-speech conversion
 @app.route('/speak', methods=['POST'])
 def speak():
     data = request.get_json()
