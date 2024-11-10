@@ -39,7 +39,7 @@
         <h1>Healthcare Translation Web App</h1>
 
         <!-- Token and note about token expiration -->
-        <p>Current Token: <span id="token"></span> (This token updates every minute)</p>
+        <p>Current Token: <span id="token">{{ token }}</span> (This token updates every minute)</p>
 
         <!-- Token input and verification -->
         <label for="tokenInput">Enter Token:</label>
@@ -81,23 +81,11 @@
         const statusElement = document.getElementById('status');
         const tokenInput = document.getElementById('tokenInput');
         const verifyTokenButton = document.getElementById('verifyTokenButton');
-        const tokenDisplay = document.getElementById('token');
         const originalTextElement = document.getElementById('original');
         const translatedTextElement = document.getElementById('translated');
         const audioPlayer = document.getElementById('audio-player');
 
         let tokenVerified = false;
-
-        // Fetch and display the token from the server
-        fetch('/')
-            .then(response => response.text())
-            .then(data => {
-                const regex = /Current Token: (\d+)/;
-                const match = data.match(regex);
-                if (match) {
-                    tokenDisplay.textContent = match[1];
-                }
-            });
 
         // Verify the token
         verifyTokenButton.onclick = () => {
