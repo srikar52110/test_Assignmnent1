@@ -53,5 +53,3 @@ def speak():
         return send_file(audio_bytes, mimetype='audio/mpeg')
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-if __name__ == '__main__':
-    app.run(debug=True)
