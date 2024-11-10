@@ -27,7 +27,6 @@ def generate_token():
     current_token = random.randint(1, 100)
     token_timestamp = time.time()
 
-# Route to display the UI
 @app.route('/')
 def index():
     generate_token()  # Generate the token at the start
