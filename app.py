@@ -134,6 +134,12 @@ def verify_token():
     data = request.get_json()
     token = data.get('token')
 
+    try:
+        # Ensure the token is an integer
+        token = int(token)
+    except ValueError:
+        return jsonify({'error': 'Token must be an integer'}), 400  # Bad Request if token is not integer
+
     if token != current_token:
         return jsonify({'error': 'Invalid token'}), 400  # Bad Request if token is invalid
 
