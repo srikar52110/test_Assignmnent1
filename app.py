@@ -3,15 +3,11 @@ import openai
 from gtts import gTTS
 from io import BytesIO
 import os
-import spacy
 
 app = Flask(__name__)
 
 # Load OpenAI API key from environment variable
 openai.api_key = os.getenv('OPENAI_API_KEY')
-
-# Load spaCy model
-nlp = spacy.load("en_core_web_sm")
 
 @app.route('/')
 def index():
@@ -24,28 +20,31 @@ def translate():
     input_language = data.get('input_language', 'en-US')
     output_language = data.get('output_language', 'en')
 
-    # Step 1: Correct medical terminology using GPT
+    # Step 1: Correct potential mispronunciations or errors in the medical terms
     correction_prompt = f"""
     You are a medical language expert AI that accurately understands medical terminology.
     The user may have mispronounced or mistyped some medical terms. Please help to interpret 
     and correct any potential errors in medical terms within the following input:
     Text: {text}
-
+    
     Ensure that the text is corrected in {input_language} language for optimal translation accuracy.
     """
     try:
         correction_response = openai.Completion.create(
             model="gpt-3.5-turbo-instruct",
             prompt=correction_prompt,
-            max_tokens=500,
+            max_tokens=1000,
             temperature=0.7
         )
         corrected_text = correction_response.choices[0].text.strip()
+    except Exception as e:
+        return jsonify({'error': f'Correction step failed: {str(e)}'}), 500
 
-        # Step 2: Translate corrected text using GPT
-        translation_prompt = f"""
-        Translate the following text from {input_language} to {output_language} with a focus on medical terminology. Text: {corrected_text}
-        """
+    # Step 2: Translate the corrected text
+    translation_prompt = f"""
+    Translate the following text from {input_language} to {output_language} with a focus on medical terminology. Text: {corrected_text}
+    """
+    try:
         translation_response = openai.Completion.create(
             model="gpt-3.5-turbo-instruct",
             prompt=translation_prompt,
@@ -53,37 +52,39 @@ def translate():
             temperature=0.7
         )
         translated_text = translation_response.choices[0].text.strip()
+    except Exception as e:
+        return jsonify({'error': f'Translation step failed: {str(e)}'}), 500
 
-        # Step 3: Verify translation accuracy
-        verification_prompt = f"""
-        You are a translation verification AI that checks the relevance and quality of translations, 
-        especially for medical terminology. Evaluate if the following translated text accurately 
-        reflects the input text and conforms to the {output_language} language and dialect.
+    # Step 3: Verify and adjust translation accuracy
+    verification_prompt = f"""
+    You are a medical language expert AI specializing in translation accuracy for medical terminology.
+    Please review the translated text and make any necessary adjustments to ensure it accurately 
+    reflects the original meaning, particularly for complex or sensitive medical terms. If the 
+    translation does not fully convey the intent or specific medical terms of the input, modify it 
+    accordingly.
 
-        Input Text: {corrected_text}
-        Translated Text: {translated_text}
-        Input Language: {input_language}
-        Output Language: {output_language}
+    Original Text: {corrected_text}
+    Initial Translated Text: {translated_text}
+    Input Language: {input_language}
+    Output Language: {output_language}
 
-        Please respond with 'Accurate' if the translation is accurate, or provide suggestions for improvement.
-        """
+    Provide the finalized translation that most accurately preserves the meaning and context.
+    """
+    try:
         verification_response = openai.Completion.create(
             model="gpt-3.5-turbo-instruct",
             prompt=verification_prompt,
-            max_tokens=50,
-            temperature=0.5
+            max_tokens=1000,
+            temperature=0.7
         )
-        verification_result = verification_response.choices[0].text.strip()
-
-        # Compile results for response
-        response_data = {
-            'corrected_text': corrected_text,
-            'translated_text': translated_text,
-            'verification': verification_result
-        }
-        return jsonify(response_data)
+        final_translated_text = verification_response.choices[0].text.strip()
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'Verification step failed: {str(e)}'}), 500
+
+    return jsonify({
+        'corrected_text': corrected_text,
+        'translated_text': final_translated_text
+    })
 
 @app.route('/speak', methods=['POST'])
 def speak():
