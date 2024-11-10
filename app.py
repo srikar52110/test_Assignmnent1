@@ -32,7 +32,7 @@ def verify_token():
     user_token = data.get('token')
 
     # Check if token matches the current one
-    if user_token != str(current_token):
+    if user_token != current_token:
         return jsonify({'error': 'Invalid token. Please check the token and try again.'}), 403
 
     return jsonify({'message': 'Token verified successfully'})
