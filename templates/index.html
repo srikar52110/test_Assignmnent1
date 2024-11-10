@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Healthcare Translation Web App</title>
     <style>
-        /* Simple styling for mobile-first design */
         body {
             font-family: Arial, sans-serif;
             padding: 20px;
@@ -30,9 +29,9 @@
             cursor: pointer;
         }
 
-            button:hover {
-                background-color: #0056b3;
-            }
+        button:hover {
+            background-color: #0056b3;
+        }
     </style>
 </head>
 <body>
@@ -40,42 +39,72 @@
         <h1>Healthcare Translation Web App</h1>
         <p><strong>Security Note:</strong> This token changes every minute for enhanced security.</p>
         <h2>Current Token: {{ token }}</h2>
+
+        <!-- Token entry and verification -->
         <label for="tokenInput">Enter Token to Proceed:</label>
         <input type="text" id="tokenInput" required>
+        <button id="verifyTokenButton">Verify Token</button>
+        <p id="tokenStatus"></p>
 
-        <!-- Language selection -->
-        <label for="inputLanguage">Input Language:</label>
-        <select id="inputLanguage">
-            <option value="en-US">English</option>
-            <option value="es-ES">Spanish</option>
-            <option value="fr-FR">French</option>
-        </select>
+        <!-- Translation functionality, initially hidden -->
+        <div id="translationSection" style="display:none;">
+            <label for="inputLanguage">Input Language:</label>
+            <select id="inputLanguage">
+                <option value="en-US">English</option>
+                <option value="es-ES">Spanish</option>
+                <option value="fr-FR">French</option>
+            </select>
 
-        <label for="outputLanguage">Output Language:</label>
-        <select id="outputLanguage">
-            <option value="en">English</option>
-            <option value="es">Spanish</option>
-            <option value="fr">French</option>
-        </select>
+            <label for="outputLanguage">Output Language:</label>
+            <select id="outputLanguage">
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+            </select>
 
-        <button id="startRecognition">Start Speaking</button>
-        <p id="status"></p>
+            <button id="startRecognition">Start Speaking</button>
+            <p id="status"></p>
 
-        <div id="original"></div>
-        <div id="translated"></div>
-        <audio id="audio-player" controls style="display: none;"></audio>
+            <div id="original"></div>
+            <div id="translated"></div>
+            <audio id="audio-player" controls style="display: none;"></audio>
+        </div>
     </div>
 
     <script>
         const tokenInput = document.getElementById('tokenInput');
-        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.lang = 'en-US';
-
+        const verifyTokenButton = document.getElementById('verifyTokenButton');
+        const tokenStatus = document.getElementById('tokenStatus');
+        const translationSection = document.getElementById('translationSection');
         const startRecognitionButton = document.getElementById('startRecognition');
         const statusElement = document.getElementById('status');
         const originalTextElement = document.getElementById('original');
         const translatedTextElement = document.getElementById('translated');
         const audioPlayer = document.getElementById('audio-player');
+
+        verifyTokenButton.onclick = () => {
+            const token = tokenInput.value;
+
+            fetch('/verify-token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    tokenStatus.textContent = data.message;
+                    translationSection.style.display = 'block';
+                } else if (data.error) {
+                    tokenStatus.textContent = data.error;
+                    translationSection.style.display = 'none';
+                }
+            })
+            .catch(error => tokenStatus.textContent = 'Token verification failed: ' + error);
+        };
+
+        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.lang = 'en-US';
 
         recognition.onresult = (event) => {
             const spokenText = event.results[0][0].transcript;
@@ -83,18 +112,30 @@
 
             const inputLanguage = document.getElementById('inputLanguage').value;
             const outputLanguage = document.getElementById('outputLanguage').value;
-            const token = tokenInput.value;
 
             fetch('/translate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: spokenText, input_language: inputLanguage, output_language: outputLanguage, token: token })
+                body: JSON.stringify({ text: spokenText, input_language: inputLanguage, output_language: outputLanguage })
             })
                 .then(response => response.json())
                 .then(data => {
-                    if (data.translated_text) {
-                        translatedTextElement.textContent = 'Translated Text: ' + data.translated_text;
-                    }
+                    translatedTextElement.textContent = 'Translated Text: ' + data.translated_text;
+
+                    // Fetch and play translated text audio
+                    fetch('/speak', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: data.translated_text, language: outputLanguage })
+                    })
+                        .then(response => response.blob())
+                        .then(blob => {
+                            const url = URL.createObjectURL(blob);
+                            audioPlayer.src = url;
+                            audioPlayer.style.display = 'block';
+                            audioPlayer.play();
+                        })
+                        .catch(error => alert('Error in speech synthesis: ' + error));
                 })
                 .catch(error => alert('Error in translation: ' + error));
         };
