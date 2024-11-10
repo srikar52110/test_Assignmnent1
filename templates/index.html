@@ -126,6 +126,7 @@
     </div>
 
     <script>
+        // Initialize the speech recognition API
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         recognition.lang = 'en-US';
 
@@ -184,6 +185,12 @@
         // Token verification handler
         verifyTokenButton.onclick = () => {
             const enteredToken = tokenInput.value;
+
+            if (!enteredToken || !/^\d+$/.test(enteredToken)) {
+                statusElement.textContent = 'Invalid token format. Please enter a valid numeric token.';
+                return;
+            }
+
             fetch('/verify_token', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
