@@ -12,38 +12,24 @@ app = Flask(__name__)
 # Load OpenAI API key from environment variable
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
-# Key for encryption/decryption
+# Generate a new encryption key
 key = Fernet.generate_key()
-cipher_suite = Fernet(key)
+cipher = Fernet(key)
 
-# Store the token
+# Token storage (simple prototype, refresh every minute)
 current_token = None
-token_time = 0  # To track token expiration
+token_timestamp = None
 
-# Function to generate a new token
 def generate_token():
-    return random.randint(1, 100)
-
-# Function to check token expiration and generate a new token if necessary
-def check_token():
-    global current_token, token_time
-    if time.time() - token_time > 60:  # Token expires every 60 seconds
-        current_token = generate_token()
-        token_time = time.time()
+    global current_token, token_timestamp
+    current_token = random.randint(1, 100)
+    token_timestamp = time.time()
 
 @app.route('/')
 def index():
-    check_token()  # Ensure the token is up-to-date
+    if not current_token or time.time() - token_timestamp > 60:
+        generate_token()
     return render_template('index.html', token=current_token)
-
-@app.route('/verify-token', methods=['POST'])
-def verify_token():
-    data = request.get_json()
-    user_token = data.get('token')
-    if user_token == current_token:
-        return jsonify({'message': 'Token verified successfully!'})
-    else:
-        return jsonify({'error': 'Invalid token!'}), 400
 
 @app.route('/translate', methods=['POST'])
 def translate():
@@ -51,16 +37,16 @@ def translate():
     text = data.get('text')
     input_language = data.get('input_language', 'en-US')
     output_language = data.get('output_language', 'en')
-
-    # Step 1: Encrypt the input text
-    encrypted_text = cipher_suite.encrypt(text.encode()).decode()
     
-    # Step 2: Correct potential mispronunciations or errors in medical terms
+    # Encrypt the input text
+    encrypted_input = cipher.encrypt(text.encode()).decode()
+
+    # Correct potential mispronunciations or errors in the medical terms
     correction_prompt = f"""
     You are a medical language expert AI that accurately understands medical terminology.
     The user may have mispronounced or mistyped some medical terms. Please help to interpret 
     and correct any potential errors in medical terms within the following input:
-    Text: {encrypted_text}
+    Text: {text}
     
     Ensure that the text is corrected in {input_language} language for optimal translation accuracy.
     """
@@ -75,7 +61,7 @@ def translate():
     except Exception as e:
         return jsonify({'error': f'Correction step failed: {str(e)}'}), 500
 
-    # Step 2: Translate the corrected text
+    # Translate the corrected text
     translation_prompt = f"""
     Translate the following text from {input_language} to {output_language} with a focus on medical terminology. Text: {corrected_text}
     """
@@ -90,7 +76,7 @@ def translate():
     except Exception as e:
         return jsonify({'error': f'Translation step failed: {str(e)}'}), 500
 
-    # Step 3: Verification step (review and adjust translation for medical terminology)
+    # Verify and adjust translation accuracy
     verification_prompt = f"""
     You are a medical language expert AI specializing in translation accuracy for medical terminology.
     Please review the translated text and make any necessary adjustments to ensure it accurately 
@@ -116,12 +102,13 @@ def translate():
     except Exception as e:
         return jsonify({'error': f'Verification step failed: {str(e)}'}), 500
 
-    # Step 4: Decrypt the final translated text
-    decrypted_translated_text = cipher_suite.decrypt(final_translated_text.encode()).decode()
+    # Encrypt the translated output
+    encrypted_output = cipher.encrypt(final_translated_text.encode()).decode()
 
     return jsonify({
         'corrected_text': corrected_text,
-        'translated_text': decrypted_translated_text
+        'encrypted_input': encrypted_input,
+        'encrypted_output': encrypted_output
     })
 
 @app.route('/speak', methods=['POST'])
@@ -142,3 +129,12 @@ def speak():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/verify_token', methods=['POST'])
+def verify_token():
+    data = request.get_json()
+    token = data.get('token')
+
+    if token != current_token:
+        return jsonify({'error': 'Invalid token'}), 400  # Bad Request if token is invalid
+
+    return jsonify({'message': 'Token verified'}), 200
